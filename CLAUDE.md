@@ -30,9 +30,9 @@ The game is a state machine over `state ∈ {'ready', 'playing', 'paused', 'over
 
 - **Direction buffering**: input writes `nextDir`; `step()` promotes it to `dir`. Setting `dir` directly from an input handler would let two keypresses inside one tick reverse the snake into itself. `setDirection` rejects reversals and no-ops.
 - **Colors live in CSS**: `draw()` reads `--snake`, `--food`, etc. through `getVar()` at paint time. Restyle by editing the `:root` custom properties, not by hardcoding colors in JS.
-- **`food === null` means the board is full**, which is the win condition — `placeFood()` enumerates free cells and yields `null` when there are none. Guard food reads accordingly.
+- **`foods` holds up to `FOOD_COUNT` foods**; `placeFood()` tops the array back up by enumerating free cells (excluding the snake and already-placed foods) and stops early when there are none. **An empty `foods` means the board is full**, which is the win condition, so `step()` checks `foods.length` after refilling.
 - **Self-collision excludes the last segment**, since the tail vacates its cell on the same tick.
-- Tuning constants (`CELLS`, `BASE_TICK`, `MIN_TICK`) sit at the top of the script block. `CELL` is derived from `canvas.width / CELLS`, so the canvas must stay square and its `width`/`height` attributes divisible by `CELLS`.
+- Tuning constants (`CELLS`, `BASE_TICK`, `MIN_TICK`, `FOOD_COUNT`) sit at the top of the script block. `CELL` is derived from `canvas.width / CELLS`, so the canvas must stay square and its `width`/`height` attributes divisible by `CELLS`.
 
 ### Browser requirement
 

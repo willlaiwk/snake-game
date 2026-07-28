@@ -120,8 +120,9 @@
 
   const BASE_TICK = 120;            // ms per step at score 0
   const MIN_TICK = 60;              // fastest the snake ever gets
+  const FOOD_COUNT = 2;             // foods on the board at once
 
-  let snake, dir, nextDir, food, score, best, state, acc, last;
+  let snake, dir, nextDir, foods, score, best, state, acc, last;
 
   best = Number(localStorage.getItem('snake.best') || 0);
   bestEl.textContent = best;
@@ -138,20 +139,27 @@
     score = 0;
     acc = 0;
     scoreEl.textContent = '0';
+    foods = [];
     placeFood();
     state = 'ready';
     showOverlay('Ready?', 'Arrows or WASD to move<br>Space to pause');
   }
 
+  // Tops the board back up to FOOD_COUNT foods. Fewer are placed when the board
+  // runs out of free cells; an empty `foods` means the player has won.
   function placeFood() {
-    const free = [];
-    for (let y = 0; y < CELLS; y++) {
-      for (let x = 0; x < CELLS; x++) {
-        if (!snake.some(s => s.x === x && s.y === y)) free.push({ x, y });
+    while (foods.length < FOOD_COUNT) {
+      const free = [];
+      for (let y = 0; y < CELLS; y++) {
+        for (let x = 0; x < CELLS; x++) {
+          if (snake.some(s => s.x === x && s.y === y)) continue;
+          if (foods.some(f => f.x === x && f.y === y)) continue;
+          free.push({ x, y });
+        }
       }
+      if (!free.length) return;
+      foods.push(free[Math.floor(Math.random() * free.length)]);
     }
-    // Board full means the player has won; keep food off-board in that case.
-    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
   }
 
   function showOverlay(title, hint) {
@@ -179,11 +187,13 @@
 
     snake.unshift(head);
 
-    if (food && head.x === food.x && head.y === food.y) {
+    const eaten = foods.findIndex(f => f.x === head.x && f.y === head.y);
+    if (eaten !== -1) {
+      foods.splice(eaten, 1);
       score++;
       scoreEl.textContent = score;
       placeFood();
-      if (!food) return win();
+      if (!foods.length) return win();
     } else {
       snake.pop();
     }
@@ -222,11 +232,11 @@
       ctx.stroke();
     }
 
-    if (food) {
-      ctx.fillStyle = getVar('--food');
-      roundRect(food.x * CELL + 3, food.y * CELL + 3, CELL - 6, CELL - 6, 4);
+    ctx.fillStyle = getVar('--food');
+    foods.forEach(f => {
+      roundRect(f.x * CELL + 3, f.y * CELL + 3, CELL - 6, CELL - 6, 4);
       ctx.fill();
-    }
+    });
 
     snake.forEach((s, i) => {
       ctx.fillStyle = i === 0 ? getVar('--snake-head') : getVar('--snake');
