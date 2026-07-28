@@ -12,6 +12,7 @@
     --snake: #4ade80;
     --snake-head: #86efac;
     --food: #f87171;
+    --super-food: #fbbf24;
     --text: #e5e7eb;
     --muted: #9ca3af;
   }
@@ -121,8 +122,12 @@
   const BASE_TICK = 120;            // ms per step at score 0
   const MIN_TICK = 60;              // fastest the snake ever gets
   const FOOD_COUNT = 2;             // foods on the board at once
+  const SUPER_CHANCE = 0.15;        // odds a placed food is a super food
+  const SUPER_GROWTH = 2;           // segments a super food adds
 
-  let snake, dir, nextDir, foods, score, best, state, acc, last;
+  // `grow` is the number of segments still owed to the snake; the tail stays
+  // put on a tick that spends one, which is how a food turns into length.
+  let snake, dir, nextDir, foods, score, best, state, acc, last, grow;
 
   best = Number(localStorage.getItem('snake.best') || 0);
   bestEl.textContent = best;
@@ -138,6 +143,7 @@
     nextDir = dir;
     score = 0;
     acc = 0;
+    grow = 0;
     scoreEl.textContent = '0';
     foods = [];
     placeFood();
@@ -158,7 +164,8 @@
         }
       }
       if (!free.length) return;
-      foods.push(free[Math.floor(Math.random() * free.length)]);
+      const cell = free[Math.floor(Math.random() * free.length)];
+      foods.push({ x: cell.x, y: cell.y, super: Math.random() < SUPER_CHANCE });
     }
   }
 
@@ -181,22 +188,29 @@
     const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
     const hitWall = head.x < 0 || head.y < 0 || head.x >= CELLS || head.y >= CELLS;
-    // The tail cell frees up as we move, so it is not a collision.
-    const hitSelf = snake.some((s, i) => i < snake.length - 1 && s.x === head.x && s.y === head.y);
+    // The tail cell frees up as we move — unless growth is owed, in which case
+    // the tail stays put this tick and the cell is still solid.
+    const solid = grow > 0 ? snake.length : snake.length - 1;
+    const hitSelf = snake.some((s, i) => i < solid && s.x === head.x && s.y === head.y);
     if (hitWall || hitSelf) return gameOver();
 
     snake.unshift(head);
 
     const eaten = foods.findIndex(f => f.x === head.x && f.y === head.y);
     if (eaten !== -1) {
+      // A super food is worth its extra length in points too.
+      const gain = foods[eaten].super ? SUPER_GROWTH : 1;
       foods.splice(eaten, 1);
-      score++;
+      grow += gain;
+      score += gain;
       scoreEl.textContent = score;
       placeFood();
       if (!foods.length) return win();
-    } else {
-      snake.pop();
     }
+
+    // Spend one segment of owed growth by leaving the tail in place.
+    if (grow > 0) grow--;
+    else snake.pop();
   }
 
   function gameOver() {
@@ -232,9 +246,12 @@
       ctx.stroke();
     }
 
-    ctx.fillStyle = getVar('--food');
+    // Super foods pulse so they stand out from the plain ones at a glance.
+    const pulse = (Math.sin(performance.now() / 180) + 1) / 2;
     foods.forEach(f => {
-      roundRect(f.x * CELL + 3, f.y * CELL + 3, CELL - 6, CELL - 6, 4);
+      const inset = f.super ? 1 + pulse : 3;
+      ctx.fillStyle = getVar(f.super ? '--super-food' : '--food');
+      roundRect(f.x * CELL + inset, f.y * CELL + inset, CELL - inset * 2, CELL - inset * 2, 4);
       ctx.fill();
     });
 

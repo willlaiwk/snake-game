@@ -30,9 +30,10 @@ The game is a state machine over `state ∈ {'ready', 'playing', 'paused', 'over
 
 - **Direction buffering**: input writes `nextDir`; `step()` promotes it to `dir`. Setting `dir` directly from an input handler would let two keypresses inside one tick reverse the snake into itself. `setDirection` rejects reversals and no-ops.
 - **Colors live in CSS**: `draw()` reads `--snake`, `--food`, etc. through `getVar()` at paint time. Restyle by editing the `:root` custom properties, not by hardcoding colors in JS.
-- **`foods` holds up to `FOOD_COUNT` foods**; `placeFood()` tops the array back up by enumerating free cells (excluding the snake and already-placed foods) and stops early when there are none. **An empty `foods` means the board is full**, which is the win condition, so `step()` checks `foods.length` after refilling.
-- **Self-collision excludes the last segment**, since the tail vacates its cell on the same tick.
-- Tuning constants (`CELLS`, `BASE_TICK`, `MIN_TICK`, `FOOD_COUNT`) sit at the top of the script block. `CELL` is derived from `canvas.width / CELLS`, so the canvas must stay square and its `width`/`height` attributes divisible by `CELLS`.
+- **`foods` holds up to `FOOD_COUNT` foods**; `placeFood()` tops the array back up by enumerating free cells (excluding the snake and already-placed foods) and stops early when there are none. **An empty `foods` means the board is full**, which is the win condition, so `step()` checks `foods.length` after refilling. Each placed food is a super food with probability `SUPER_CHANCE`, flagged by `f.super`.
+- **Growth is owed, not immediate**: eating adds to the `grow` counter (`SUPER_GROWTH` for a super food, 1 otherwise) and each tick spends one unit by leaving the tail in place. That is what lets a super food add more than one segment from a single tick. The same amount is added to `score`, so a super food is worth 2 points and the snake speeds up accordingly.
+- **Self-collision excludes the last segment only while `grow === 0`**, since the tail vacates its cell on the same tick — but a tail holding still to pay off growth is solid.
+- Tuning constants (`CELLS`, `BASE_TICK`, `MIN_TICK`, `FOOD_COUNT`, `SUPER_CHANCE`, `SUPER_GROWTH`) sit at the top of the script block. `CELL` is derived from `canvas.width / CELLS`, so the canvas must stay square and its `width`/`height` attributes divisible by `CELLS`.
 
 ### Browser requirement
 
