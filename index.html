@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snake</title>
+<style>
+  :root {
+    --bg: #12141c;
+    --panel: #1b1e29;
+    --grid: #232735;
+    --snake: #4ade80;
+    --snake-head: #86efac;
+    --food: #f87171;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  #scoreboard {
+    display: flex;
+    gap: 24px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  #scoreboard b { color: var(--text); }
+  #stage {
+    position: relative;
+    line-height: 0;
+  }
+  canvas {
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid var(--grid);
+    max-width: 100%;
+    height: auto;
+    touch-action: none;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(18, 20, 28, 0.82);
+    border-radius: 8px;
+    text-align: center;
+    line-height: 1.5;
+  }
+  #overlay.hidden { display: none; }
+  #overlay .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+  #overlay .hint { font-size: 13px; color: var(--muted); }
+  footer { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.7; }
+  kbd {
+    background: var(--grid);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+  <h1>Snake</h1>
+  <div id="scoreboard">
+    <span>Score <b id="score">0</b></span>
+    <span>Best <b id="best">0</b></span>
+  </div>
+
+  <div id="stage">
+    <canvas id="board" width="480" height="480"></canvas>
+    <div id="overlay">
+      <div class="title">Ready?</div>
+      <div class="hint">Arrows or WASD to move<br>Space to pause</div>
+    </div>
+  </div>
+
+  <footer>
+    <kbd>↑</kbd> <kbd>←</kbd> <kbd>↓</kbd> <kbd>→</kbd> / <kbd>WASD</kbd> move &nbsp;·&nbsp;
+    <kbd>Space</kbd> pause &nbsp;·&nbsp; <kbd>R</kbd> restart
+    <br>Swipe on the board to steer on touch devices.
+  </footer>
+
+<script>
+(() => {
+  const CELLS = 24;                 // grid is CELLS x CELLS
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const CELL = canvas.width / CELLS;
+
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = overlay.querySelector('.title');
+  const overlayHint = overlay.querySelector('.hint');
+
+  const BASE_TICK = 120;            // ms per step at score 0
+  const MIN_TICK = 60;              // fastest the snake ever gets
+
+  let snake, dir, nextDir, food, score, best, state, acc, last;
+
+  best = Number(localStorage.getItem('snake.best') || 0);
+  bestEl.textContent = best;
+
+  function reset() {
+    const mid = Math.floor(CELLS / 2);
+    snake = [
+      { x: mid,     y: mid },
+      { x: mid - 1, y: mid },
+      { x: mid - 2, y: mid },
+    ];
+    dir = { x: 1, y: 0 };
+    nextDir = dir;
+    score = 0;
+    acc = 0;
+    scoreEl.textContent = '0';
+    placeFood();
+    state = 'ready';
+    showOverlay('Ready?', 'Arrows or WASD to move<br>Space to pause');
+  }
+
+  function placeFood() {
+    const free = [];
+    for (let y = 0; y < CELLS; y++) {
+      for (let x = 0; x < CELLS; x++) {
+        if (!snake.some(s => s.x === x && s.y === y)) free.push({ x, y });
+      }
+    }
+    // Board full means the player has won; keep food off-board in that case.
+    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+  }
+
+  function showOverlay(title, hint) {
+    overlayTitle.innerHTML = title;
+    overlayHint.innerHTML = hint;
+    overlay.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlay.classList.add('hidden');
+  }
+
+  function tickInterval() {
+    return Math.max(MIN_TICK, BASE_TICK - score * 2);
+  }
+
+  function step() {
+    dir = nextDir;
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    const hitWall = head.x < 0 || head.y < 0 || head.x >= CELLS || head.y >= CELLS;
+    // The tail cell frees up as we move, so it is not a collision.
+    const hitSelf = snake.some((s, i) => i < snake.length - 1 && s.x === head.x && s.y === head.y);
+    if (hitWall || hitSelf) return gameOver();
+
+    snake.unshift(head);
+
+    if (food && head.x === food.x && head.y === food.y) {
+      score++;
+      scoreEl.textContent = score;
+      placeFood();
+      if (!food) return win();
+    } else {
+      snake.pop();
+    }
+  }
+
+  function gameOver() {
+    state = 'over';
+    saveBest();
+    showOverlay('Game Over', `Score ${score}<br>Press <kbd>R</kbd> or tap to play again`);
+  }
+
+  function win() {
+    state = 'over';
+    saveBest();
+    showOverlay('You Win!', `Perfect score ${score}<br>Press <kbd>R</kbd> or tap to play again`);
+  }
+
+  function saveBest() {
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      localStorage.setItem('snake.best', String(best));
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = getVar('--grid');
+    ctx.lineWidth = 1;
+    for (let i = 1; i < CELLS; i++) {
+      const p = i * CELL + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(p, 0); ctx.lineTo(p, canvas.height);
+      ctx.moveTo(0, p); ctx.lineTo(canvas.width, p);
+      ctx.stroke();
+    }
+
+    if (food) {
+      ctx.fillStyle = getVar('--food');
+      roundRect(food.x * CELL + 3, food.y * CELL + 3, CELL - 6, CELL - 6, 4);
+      ctx.fill();
+    }
+
+    snake.forEach((s, i) => {
+      ctx.fillStyle = i === 0 ? getVar('--snake-head') : getVar('--snake');
+      roundRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2, 3);
+      ctx.fill();
+    });
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+  }
+
+  function getVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function loop(now) {
+    requestAnimationFrame(loop);
+    if (last === undefined) last = now;
+    const dt = now - last;
+    last = now;
+
+    if (state === 'playing') {
+      acc += dt;
+      while (acc >= tickInterval() && state === 'playing') {
+        acc -= tickInterval();
+        step();
+      }
+    }
+    draw();
+  }
+
+  function setDirection(x, y) {
+    // Ignore reversals onto the neck.
+    if (dir.x === -x && dir.y === -y) return;
+    if (dir.x === x && dir.y === y) return;
+    nextDir = { x, y };
+    if (state === 'ready') start();
+  }
+
+  function start() {
+    state = 'playing';
+    acc = 0;
+    hideOverlay();
+  }
+
+  function togglePause() {
+    if (state === 'playing') {
+      state = 'paused';
+      showOverlay('Paused', 'Press <kbd>Space</kbd> to resume');
+    } else if (state === 'paused') {
+      start();
+    } else if (state === 'ready') {
+      start();
+    }
+  }
+
+  const KEYS = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  };
+
+  window.addEventListener('keydown', e => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+    if (key === ' ') { e.preventDefault(); togglePause(); return; }
+    if (key === 'r') { reset(); return; }
+
+    const move = KEYS[key];
+    if (!move) return;
+    e.preventDefault();
+    if (state === 'over') return;
+    setDirection(move[0], move[1]);
+  });
+
+  // Touch: swipe to steer, tap to start / restart.
+  let touchStart = null;
+  canvas.addEventListener('touchstart', e => {
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', e => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    touchStart = null;
+
+    if (Math.hypot(dx, dy) < 24) {           // treated as a tap
+      if (state === 'over') reset();
+      else togglePause();
+      return;
+    }
+    if (state === 'over') return;
+    if (Math.abs(dx) > Math.abs(dy)) setDirection(Math.sign(dx), 0);
+    else setDirection(0, Math.sign(dy));
+  });
+
+  overlay.addEventListener('click', () => {
+    if (state === 'over') reset();
+    else togglePause();
+  });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
